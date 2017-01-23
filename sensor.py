@@ -1,8 +1,24 @@
+#!/usr/bin/python
+
 import RPi.GPIO as GPIO
 import time
 import os.path
 import csv
+import sys
 from datetime import datetime
+from influxdb import InfluxDBClient
+
+
+sys.stdout.flush()
+
+#influxDB connection config
+host = "localhost"
+port = 8086
+user = "root"
+password = "root"
+dbname = "sensor_db"
+
+client = InfluxDBClient(host, port, user, password, dbname)
 
 sensor = 17
 id="10-000802587a9e"
@@ -36,12 +52,12 @@ while True:
                 line = f.readline() # read 2nd line
                 mytemp = line.rsplit('t=',1)
                 if int(mytemp[1]) >= -29000:
-                        ac_status = "on"
+                        ac_status = 1
 		else:
-			ac_status = "off"
+			ac_status = 0
 	else:	
 		current_temp=99999
-		ac_status = "error"
+		ac_status = 9
 
 	i = GPIO.input(sensor)
 	if i == 1:
@@ -50,10 +66,26 @@ while True:
 	if i == 0:
 		if ever_movement:
 			print "seconds from last movement: " + str(int(time.time()-last_movement))
-			if int(time.time()-last_movement) > 180 and ac_status is "on":
+			if int(time.time()-last_movement) > 180 and ac_status is 1:
 				print "Noone in the room for last 3 minutes but AC is on"
 
-	print str(datetime.now()) + "," + str(i) + "," + ac_status
-	writer.writerow( (str(datetime.now()), str(i), ac_status) )
+	print str(datetime.now()) + "," + str(i) + "," + str(ac_status) + " - " + str(mytemp[1])
+	iso = str(datetime.utcnow())
+	json_body = [
+        	{
+                	"measurement": "ac_sensor",
+                	"tags": {
+                        	"ac": "office"
+                	},
+                	"time": iso,
+                	"fields": {
+                        	"someone_in_room": str(i),
+				"ac_status": str(ac_status)
+                	}
+        	}
+	]
+	writer.writerow( (str(datetime.now()), str(i), str(ac_status)) )
+	print str(json_body)
+	client.write_points(json_body)
 	time.sleep(3)
 
